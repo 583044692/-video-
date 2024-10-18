@@ -1,0 +1,57 @@
+name: Install PHP 5.6.40 in UOS Server Base Container
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Login to UnionTech Registry
+      uses: docker/login-action@v1
+      with:
+        registry: registry.uniontech.com
+        username: ${{ secrets.UNIONTECH_REGISTRY_USERNAME }}
+        password: ${{ secrets.UNIONTECH_REGISTRY_PASSWORD }}
+
+    - name: Pull the base image
+      run: |
+        docker pull registry.uniontech.com/uos-server-base/uos-server-20-1070a:latest
+
+    - name: Install PHP 5.6.40
+      run: |
+        docker run --rm -it \
+          -v $(pwd):/workspace \
+          -w /workspace \
+          registry.uniontech.com/uos-server-base/uos-server-20-1070a:latest \
+          bash -c " \
+            # 更新软件源
+            yum update -y && \
+            # 添加 EPEL 仓库以获取更多软件包
+            yum install -y epel-release && \
+            # 安装 Remi 仓库以获取 PHP 5.6
+            yum install -y https://rpms.remirepo.net/enterprise/remi-release-7.rpm && \
+            # 启用 Remi 的 PHP 5.6 仓库
+            yum-config-manager --enable remi-php56 && \
+            # 安装 PHP 5.6 及其扩展
+            yum install -y php php-cli php-fpm php-mysql php-gd php-xml php-mbstring php-json && \
+            # 验证安装
+            php -v
+          "
+
+    - name: Run tests or other commands
+      run: |
+        # 在这里可以添加其他命令或测试
+        echo "PHP 5.6.40 is installed and ready for use."

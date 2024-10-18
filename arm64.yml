@@ -1,4 +1,4 @@
-name: ARM64 Pull and Save Docker Image
+name: ARM64 Pull and Save Docker Image with PHP 5.6.40
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       docker_images:
         description: '请填写docker镜像名称 多个用英文逗号分开'
         required: true
-        default: 'alpine:latest,ubuntu:latest'  # 设置默认的 Docker 镜像列表
+        default: 'registry.uniontech.com/uos-server-base/uos-server-20-1070a:latest'  # 设置默认的 Docker 镜像列表
 
 jobs:
   pull_and_package:
@@ -16,12 +16,43 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Login to UnionTech Registry
+      if: contains(github.event.inputs.docker_images, 'registry.uniontech.com')
+      uses: docker/login-action@v2
+      with:
+        registry: registry.uniontech.com
+        username: ${{ secrets.UNIONTECH_REGISTRY_USERNAME }}
+        password: ${{ secrets.UNIONTECH_REGISTRY_PASSWORD }}
+
     - name: Pull Docker Images and Package
       run: |
         images="${{ github.event.inputs.docker_images }}"
         IFS=',' read -r -a image_array <<< "$images"
         for image in "${image_array[@]}"; do
+          echo "Pulling ${image}..."
           docker pull "${image}" --platform "linux/arm64"
+
+          if [[ "${image}" == "registry.uniontech.com/uos-server-base/uos-server-20-1070a:latest" ]]; then
+            echo "Installing PHP 5.6.40 in ${image}..."
+            docker run --rm -it \
+              --platform "linux/arm64" \
+              -v $(pwd):/workspace \
+              -w /workspace \
+              "${image}" \
+              bash -c " \
+                yum update -y && \
+                yum install -y epel-release && \
+                yum install -y https://rpms.remirepo.net/enterprise/remi-release-7.rpm && \
+                yum-config-manager --enable remi-php56 && \
+                yum install -y php php-cli php-fpm php-mysql php-gd php-xml php-mbstring php-json && \
+                php -v
+              "
+            # 重新标记镜像
+            docker commit $(docker create "${image}") "${image}-php56"
+            image="${image}-php56"
+          fi
+
+          echo "Saving ${image} as tar file..."
           docker save "${image}" -o "${image//\//_}-arm64.tar"
         done
 
